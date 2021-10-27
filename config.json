@@ -1,0 +1,14 @@
+{
+    "load": {
+        "num": 3,
+        "latency": 7
+    },
+    "add": {
+        "num": 3,
+        "latency": 1
+    },
+    "mult": {
+        "num": 2,
+        "latency": 4
+    }
+}
