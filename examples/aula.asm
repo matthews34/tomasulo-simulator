@@ -1,0 +1,9 @@
+ld      f0,0(r1)
+mul     f4,f0,f2
+sd      f4,0(r1)
+subi    r1,r1,8
+bnez    r1,loop
+ld      f0,0(r1)
+mul     f4,f0,f2
+sd      f4,0(r1)
+subi    r1,r1,8      
