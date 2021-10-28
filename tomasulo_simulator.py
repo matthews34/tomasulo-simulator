@@ -9,8 +9,17 @@ from instruction import Instruction
 # TODO: completar instruções que faltam
 load_instructions = ['ld', 'lw', 'lwu', 'lh', 'lhu' , 'lb', 'lbu', 'fld', 'flw']
 store_instructions = ['sd', 'sw', 'sh', 'sb', 'fsd', 'fsw']
-add_instructions = ['add', 'sub', 'subi']
+add_instructions = ['add', 'sub', 'subi', 'addi']
 mult_instructions = ['mul']
+branch_instructions = ['beq', 'bne', 'blt', 'bge', 'bltu', 'bgeu']
+
+# tipos de instruções (R, I, S, B, U, J)
+R_type = ['add', 'sub', 'sll', 'slt', 'sltu', 'xor', 'srl', 'sra', 'or', 'and']
+I_type = ['jalr', 'lb', 'lh', 'lw', 'lbu', 'lhu', 'addi', 'slti', 'sltiu', 'xori', 'ori', 'andi', 'slli', 'srli', 'srai']
+S_type = ['sb', 'sh', 'sw']
+B_type = ['beq', 'bne', 'blt', 'bge', 'bltu', 'bgeu']
+U_type = ['lui', 'auipc']
+J_type = ['jal']
 
 # dicionário contendo o estado dos registradores
 reg_stat = {} 
@@ -46,24 +55,12 @@ def parse_instructions(filepath: str) -> list:
             arguments = match.group('arguments')
             arguments = arguments.split(',')
             
-            # load/store
-            if instruction in load_instructions or instruction in store_instructions:
-                rt = arguments[0]
-                if match := imm_pattern.match(arguments[1]):
-                    imm = match.group('imm')
-                    rs = match.group('rs')
-                else:
-                    raise ValueError(f'Argumento inválido: {arguments}')
-                instr_list.append(Instruction(instruction, 'load', {
-                    'rt': rt,
-                    'imm': imm,
-                    'rs': rs
-                }))
-            # ADD/MULT
-            elif instruction in add_instructions or instruction in mult_instructions:
+            # R-type instructions
+            if instruction in R_type:
                 rd = arguments[0]
                 rs = arguments[1]
                 rt = arguments[2]
+                # TODO: tratar operações lógicas
                 if instruction in add_instructions:
                     fu_type = 'add'
                 else:
@@ -73,9 +70,56 @@ def parse_instructions(filepath: str) -> list:
                     'rs': rs,
                     'rt': rt
                 }))
+            
+            # I-type e B-type instructions
+            elif instruction in I_type or instruction in B_type:
+                rt = arguments[0]
+                if match := imm_pattern.match(arguments[1]):
+                    imm = match.group('imm')
+                    rs = match.group('rs')
+                else:
+                    rs = arguments[1]
+                    imm = arguments[2]
+                
+                # TODO: tratar operações lógicas
+                if instruction in load_instructions or instruction in B_type:
+                    fu_type = 'load'
+                else:
+                    fu_type = 'add'
+                instr_list.append(Instruction(instruction, fu_type, {
+                    'rt': rt,
+                    'imm': imm,
+                    'rs': rs
+                }))
+
+            # S-type instruction
+            elif instruction in S_type:
+                rt = arguments[0]
+                if match := imm_pattern.match(arguments[1]):
+                    imm = match.group('imm')
+                    rs = match.group('rs')
+                else:
+                    raise ValueError(f'Argumento inválido: {arguments}')
+
+                instr_list.append(Instruction(instruction, 'load', {
+                    'rt': rt,
+                    'imm': imm,
+                    'rs': rs
+                }))
+
+            # U-type e J-type instructions
+            elif instruction in U_type or instruction in J_type:
+                rt = arguments[0]
+                imm = arguments[1]
+                instr_list.append(Instruction(instruction, 'add', {
+                    'rt': rt,
+                    'imm': imm
+                }))
+
+            # TODO: tratar as instruções de chamada de sistema e as do tipo CSR
             else:
-                # raise ValueError('Instrução desconhecida')
                 pass
+                           
     return instr_list
 
 def emit_instruction(instruction: Instruction):
@@ -110,7 +154,7 @@ def emit_instruction(instruction: Instruction):
                     RS[r].vk = rt
                     RS[r].qk = 0
     # TODO: lidar com instruções com operando imediato
-    else: # add ou mult
+    elif instruction.fu_type == 'add' and instruction.op in R_type: # add ou mult
         # encontrar a primeira estação livre para a operação desejada
         available_stations = [r for r, station in enumerate(RS) if (station.fu_type == instruction.fu_type and not station.busy)]
         rs = instruction.operands['rs']
