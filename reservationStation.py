@@ -14,6 +14,7 @@ class ReservationStation():
                 f'address = {self.address}\n'
                 f'time to finish = {self.time_to_finish}'
             )
+    
     def __init__(self, name: str, fu_type: str, fu_latency: int):
         self.name = name
         self.fu_type = fu_type
@@ -26,14 +27,33 @@ class ReservationStation():
         self.qk = None
         self.address = None
         self.time_to_finish = 0
+        self.done = False
+    
     def reserve(self, op: str):
         self.op = op
         self.busy = True
         self.time_to_finish = self.fu_latency
+    
     def update(self):
         if self.busy:
-            self.time_to_finish -= 1
+            # TODO: incluir condição para operações de load/store
+            if self.qj == 0 and self.qk == 0:
+                    self.time_to_finish -= 1
+            """
             if self.time_to_finish <= 0:
                 # remover registrador no reg_stat?
                 self.op = None
                 self.busy = False
+            """
+
+    def release(self):
+        self.busy = False
+        self.op = None
+        self.vj = None
+        self.vk = None
+        self.qj = None
+        self.qk = None
+        self.address = None
+
+    def has_finished(self):
+        return self.time_to_finish == 0

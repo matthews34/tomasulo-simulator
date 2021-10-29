@@ -60,11 +60,7 @@ def parse_instructions(filepath: str) -> list:
                 rd = arguments[0]
                 rs = arguments[1]
                 rt = arguments[2]
-                # TODO: tratar operações lógicas
-                if instruction in add_instructions:
-                    fu_type = 'add'
-                else:
-                    fu_type = 'mult'
+                fu_type = 'add'
                 instr_list.append(Instruction(instruction, fu_type, {
                     'rd': rd,
                     'rs': rs,
@@ -154,34 +150,34 @@ def emit_instruction(instruction: Instruction):
                     RS[r].vk = rt
                     RS[r].qk = 0
     # TODO: lidar com instruções com operando imediato
-    elif instruction.fu_type == 'add' and instruction.op in R_type: # add ou mult
-        # encontrar a primeira estação livre para a operação desejada
-        available_stations = [r for r, station in enumerate(RS) if (station.fu_type == instruction.fu_type and not station.busy)]
-        rs = instruction.operands['rs']
-        rt = instruction.operands['rt']
-        rd = instruction.operands['rd']
-        while not available_stations: # não existe estação livre
-            stall()
-            available_stations = [r for r, station in enumerate(RS) if (station.fu_type == instruction.fu_type and not station.busy)]
+    elif instruction.fu_type == 'add':
+        # encontrar a primeira estação livre para a operação desejada        
+        while not (available_stations := [r for r, station in enumerate(RS) if (station.fu_type == instruction.fu_type and not station.busy)]): # não existe estação livre
+            stall()           
         else: # existe uma estação livre
             print('emitindo', instruction)
             r = available_stations[0]
             RS[r].reserve(instruction.op)
-            if rs not in reg_stat:
-                reg_stat[rs] = RegisterState()
-            if reg_stat[rs].qi != 0:
-                RS[r].qj = reg_stat[rs].qi
-            else:
-                RS[r].vj = rs
-                RS[r].qj = 0
-            if rt not in reg_stat:
-                reg_stat[rt] = RegisterState()
-            if reg_stat[rt] != 0:
-                RS[r].qk = reg_stat[rt].qi
-            else:
-                RS[r].vk = rt
-                RS[r].qk = 0
-                RS[r].busy = True
+            # R-type instructions
+            if instruction.op in R_type:
+                rs = instruction.operands['rs']
+                rt = instruction.operands['rt']
+                rd = instruction.operands['rd']           
+                if rs not in reg_stat:
+                    reg_stat[rs] = RegisterState()
+                if reg_stat[rs].qi != 0:
+                    RS[r].qj = reg_stat[rs].qi
+                else:
+                    RS[r].vj = reg_stat[rs].value
+                    RS[r].qj = 0
+                if rt not in reg_stat:
+                    reg_stat[rt] = RegisterState()
+                if reg_stat[rt].qi != 0:
+                    RS[r].qk = reg_stat[rt].qi
+                else:
+                    RS[r].vk = reg_stat[rt].value
+                    RS[r].qk = 0
+                    RS[r].busy = True
                 if rd not in reg_stat:
                     reg_stat[rd] = RegisterState()
                 reg_stat[rd].qi = r
@@ -191,6 +187,7 @@ def execute():
 
 def write_result():
     pass
+
 
 def stall():
     # atualizar ciclo atual
