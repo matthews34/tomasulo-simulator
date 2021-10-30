@@ -7,8 +7,10 @@ from instruction import Instruction
 
 # lista de instruções
 # TODO: completar instruções que faltam
-load_instructions = ['ld', 'lw', 'lwu', 'lh', 'lhu' , 'lb', 'lbu', 'fld', 'flw']
-store_instructions = ['sd', 'sw', 'sh', 'sb', 'fsd', 'fsw']
+#load_instructions = ['ld', 'lw', 'lwu', 'lh', 'lhu' , 'lb', 'lbu', 'fld', 'flw']
+#store_instructions = ['sd', 'sw', 'sh', 'sb', 'fsd', 'fsw']
+load_instructions = ['lb', 'lh', 'lw', 'lbu', 'lhu']
+store_instructions = ['sb', 'sh', 'sw']
 add_instructions = ['add', 'sub', 'subi', 'addi']
 mult_instructions = ['mul']
 branch_instructions = ['beq', 'bne', 'blt', 'bge', 'bltu', 'bgeu']
@@ -36,6 +38,11 @@ def init_RS(config_path: str):
     for FU_name, FU in config.items():
         for i in range(FU['num']):
             RS.append(ReservationStation(FU_name + str(i+1), FU_name, FU['latency']))
+
+def init_reg_stat():
+    reg_stat_names = ['r' + str(n) for n in range(32)]
+    for name in reg_stat_names:
+        reg_stat[name] = RegisterState()
 
 def parse_instructions(filepath: str) -> list:
     # padrões para parsear as instruções
@@ -77,7 +84,6 @@ def parse_instructions(filepath: str) -> list:
                     rs = arguments[1]
                     imm = arguments[2]
                 
-                # TODO: tratar operações lógicas
                 if instruction in load_instructions or instruction in B_type:
                     fu_type = 'load'
                 else:
@@ -121,26 +127,21 @@ def parse_instructions(filepath: str) -> list:
 def emit_instruction(instruction: Instruction):
     if instruction.fu_type == 'load':
         # encontrar a primeira estação livre para a operação desejada
-        available_stations = [r for r, station in enumerate(RS) if (station.fu_type == 'load' and not station.busy)]
         rt = instruction.operands['rt']
         imm = instruction.operands['imm']
         rs = instruction.operands['rs']
-        while not available_stations: # não existe estação livre
+        while not (available_stations := [r for r, station in enumerate(RS) if (station.fu_type == 'load' and not station.busy)]): # não existe estação livre
             stall()
-            available_stations = [r for r, station in enumerate(RS) if (station.fu_type == 'load' and not station.busy)]
         else: # existe estação livre
             print('emitindo', instruction)
             r = available_stations[0]
             RS[r].reserve(instruction.op)
-            if rs not in reg_stat:
-                reg_stat[rs] = RegisterState()
             if reg_stat[rs].qi != 0:
                 RS[r].qj = reg_stat[rs].qi
             else:
                 RS[r].vj = rs
                 RS[r].qj = 0
                 RS[r].address = imm
-                RS[r].busy = True
             if instruction in load_instructions:
                 reg_stat[rt].qi = RS[r].name
             if instruction in store_instructions:
@@ -149,38 +150,69 @@ def emit_instruction(instruction: Instruction):
                 else:
                     RS[r].vk = rt
                     RS[r].qk = 0
-    # TODO: lidar com instruções com operando imediato
+    
     elif instruction.fu_type == 'add':
         # encontrar a primeira estação livre para a operação desejada        
-        while not (available_stations := [r for r, station in enumerate(RS) if (station.fu_type == instruction.fu_type and not station.busy)]): # não existe estação livre
+        while not (available_stations := [r for r, station in enumerate(RS) if (station.fu_type == 'add' and not station.busy)]): # não existe estação livre
             stall()           
         else: # existe uma estação livre
             print('emitindo', instruction)
             r = available_stations[0]
             RS[r].reserve(instruction.op)
+
             # R-type instructions
             if instruction.op in R_type:
                 rs = instruction.operands['rs']
                 rt = instruction.operands['rt']
                 rd = instruction.operands['rd']           
-                if rs not in reg_stat:
-                    reg_stat[rs] = RegisterState()
                 if reg_stat[rs].qi != 0:
                     RS[r].qj = reg_stat[rs].qi
                 else:
                     RS[r].vj = reg_stat[rs].value
                     RS[r].qj = 0
-                if rt not in reg_stat:
-                    reg_stat[rt] = RegisterState()
                 if reg_stat[rt].qi != 0:
                     RS[r].qk = reg_stat[rt].qi
                 else:
                     RS[r].vk = reg_stat[rt].value
                     RS[r].qk = 0
-                    RS[r].busy = True
-                if rd not in reg_stat:
-                    reg_stat[rd] = RegisterState()
-                reg_stat[rd].qi = r
+                reg_stat[rd].qi = RS[r].name
+                
+            else:
+                imm = instruction.operands['imm']
+                rt = instruction.operands['rt']
+
+                # I-type instructions
+                if instruction.op in I_type:
+                    rs = instruction.operands['rs']
+                    if reg_stat[rs].qi != 0:
+                        RS[r].qj = reg_stat[rs].qi
+                    else:
+                        RS[r].vj = reg_stat[rs].value
+                        RS[r].qj = 0
+                    RS[r].vk = imm
+                    RS[r].qk = 0
+                    reg_stat[rt].qi = RS[r].name
+                
+                # B-type instructions
+                elif instruction.op in B_type:
+                    rs = instruction.operands['rs']
+                    if reg_stat[rs].qi != 0:
+                        RS[r].qj = reg_stat[rs].qi
+                    else:
+                        RS[r].vj = reg_stat[rs].value
+                        RS[r].qj = 0
+                    if reg_stat[rt].qi != 0:
+                        RS[r].qk = reg_stat[rt].qi
+                    else:
+                        RS[r].vk = reg_stat[rt].value
+                        RS[r].qk = 0
+                    RS[r].address = imm
+                    
+                # U/J-type instructions
+                else:
+                    RS[r].vj = imm
+                    RS[r].qj = 0
+                    reg_stat[rt].qi = RS[r].name
 
 def execute():
     pass
