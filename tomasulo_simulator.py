@@ -27,6 +27,17 @@ J_type = ['jal']
 reg_stat = {} 
 cycle = 0
 
+# fila para execução de instruções de acesso à memória
+mem_queue = []
+pop_mem_queue = False
+
+# fila para escrita no cdb
+cdb_queue = []
+
+# tabela de saída do simulador tomasulo no formato
+# [ instrução , emissão , execução , escreve resultado ]
+output = {}
+
 # lista contendo as estações de reserva
 RS = []
 def init_RS(config_path: str):
@@ -84,7 +95,7 @@ def parse_instructions(filepath: str) -> list:
                     rs = arguments[1]
                     imm = arguments[2]
                 
-                if instruction in load_instructions or instruction in B_type:
+                if instruction in load_instructions:
                     fu_type = 'load'
                 else:
                     fu_type = 'add'
@@ -124,7 +135,7 @@ def parse_instructions(filepath: str) -> list:
                            
     return instr_list
 
-def emit_instruction(instruction: Instruction):
+def emit_instruction(i: int, instruction: Instruction):
     if instruction.fu_type == 'load':
         # encontrar a primeira estação livre para a operação desejada
         rt = instruction.operands['rt']
@@ -135,7 +146,9 @@ def emit_instruction(instruction: Instruction):
         else: # existe estação livre
             print('emitindo', instruction)
             r = available_stations[0]
-            RS[r].reserve(instruction.op)
+            mem_queue.append(RS[r])
+            RS[r].reserve(instruction.op, i)
+            output[i] += [cycle, []]
             if reg_stat[rs].qi != 0:
                 RS[r].qj = reg_stat[rs].qi
             else:
@@ -158,7 +171,8 @@ def emit_instruction(instruction: Instruction):
         else: # existe uma estação livre
             print('emitindo', instruction)
             r = available_stations[0]
-            RS[r].reserve(instruction.op)
+            RS[r].reserve(instruction.op, i)
+            output[i] += [cycle, []]
 
             # R-type instructions
             if instruction.op in R_type:
@@ -212,22 +226,64 @@ def emit_instruction(instruction: Instruction):
                 else:
                     RS[r].vj = imm
                     RS[r].qj = 0
+                    RS[r].qk = 0   # TODO: outro approach?
                     reg_stat[rt].qi = RS[r].name
 
-def execute():
-    pass
+def execute(station: ReservationStation):
+    # TODO: Um if personalizado para cada instrução?
+    station.done = True
+    global pop_mem_queue
+    if mem_queue[0].name == station.name:
+        pop_mem_queue = True
+
+    if station.op in S_type or station.op in B_type:
+        # TODO: Fazer mais o que?
+        output[station.table_id] += ['-']
+        station.release()
+    else:
+        cdb_queue.append(station)
 
 def write_result():
-    pass
+    if cdb_queue:
+        station = cdb_queue.pop(0)
+        for reg in reg_stat:
+            if reg_stat[reg].qi == station.name:
+                reg_stat[reg].value = station.vk
+                reg_stat[reg].qi = 0
+        for s in RS:
+            if s.qj == station.name:
+                s.vj = station.vk
+                s.qj = 0
+            if s.qk == station.name:
+                s.vk = station.vk
+                s.qk = 0
+        output[station.table_id] += [cycle]
+        station.release()
 
+def update_all():
+    global pop_mem_queue
+    # escrever resultado
+    write_result()
+
+    # atualizar estações de reserva
+    for station in RS:
+        if station.busy and not station.done:
+            if station.update(mem_queue[0].name):
+                output[station.table_id][2].append(cycle)
+            # executar a operação
+            if station.has_finished():
+                execute(station)
+    
+    if pop_mem_queue:
+        mem_queue.pop(0)
+        pop_mem_queue = False
 
 def stall():
     # atualizar ciclo atual
     global cycle
+    update_all()
     cycle += 1
-    # atualizar estações de reserva
-    for station in RS:
-        station.update()
+
 
 if __name__=='__main__':
     # parsear argumentos
@@ -246,5 +302,25 @@ if __name__=='__main__':
     instr_list = parse_instructions(filepath)
 
     # executar simulação
-    for instruction in instr_list:
-        emit_instruction(instruction)
+    for i, instruction in enumerate(instr_list):
+        cycle += 1
+
+        update_all()
+        output[i] = [instruction]
+        emit_instruction(i, instruction)
+        
+    stop = False
+    while not stop:
+        stop = True
+        cycle += 1
+
+        update_all()
+        for station in RS:
+            if station.busy:
+                stop = False
+                break
+
+    # imprimir tabela final
+    print('\n')
+    for i in output:
+        print(output[i])
