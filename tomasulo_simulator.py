@@ -155,11 +155,11 @@ def emit_instruction(i: int, instruction: Instruction):
                 RS[r].vj = rs
                 RS[r].qj = 0
                 RS[r].address = imm
-            if instruction in load_instructions:
+            if instruction.op in load_instructions:
                 reg_stat[rt].qi = RS[r].name
-            if instruction in store_instructions:
+            if instruction.op in store_instructions:
                 if reg_stat[rt].qi != 0:
-                    RS[r].qk = reg_stat[rs].qi
+                    RS[r].qk = reg_stat[rt].qi
                 else:
                     RS[r].vk = rt
                     RS[r].qk = 0
@@ -178,7 +178,7 @@ def emit_instruction(i: int, instruction: Instruction):
             if instruction.op in R_type:
                 rs = instruction.operands['rs']
                 rt = instruction.operands['rt']
-                rd = instruction.operands['rd']           
+                rd = instruction.operands['rd']         
                 if reg_stat[rs].qi != 0:
                     RS[r].qj = reg_stat[rs].qi
                 else:
@@ -233,7 +233,7 @@ def execute(station: ReservationStation):
     # TODO: Um if personalizado para cada instrução?
     station.done = True
     global pop_mem_queue
-    if mem_queue[0].name == station.name:
+    if mem_queue and mem_queue[0].name == station.name:
         pop_mem_queue = True
 
     if station.op in S_type or station.op in B_type:
@@ -245,38 +245,55 @@ def execute(station: ReservationStation):
 
 def write_result():
     if cdb_queue:
-        station = cdb_queue.pop(0)
-        for reg in reg_stat:
-            if reg_stat[reg].qi == station.name:
-                reg_stat[reg].value = station.vk
-                reg_stat[reg].qi = 0
-        for s in RS:
-            if s.qj == station.name:
-                s.vj = station.vk
-                s.qj = 0
-            if s.qk == station.name:
-                s.vk = station.vk
-                s.qk = 0
-        output[station.table_id] += [cycle]
-        station.release()
+        i = cdb_queue[0].table_id
+        exec_end = output[i][2][-1]
+        if exec_end != cycle:
+            station = cdb_queue.pop(0)
+            for reg in reg_stat:
+                if reg_stat[reg].qi == station.name:
+                    reg_stat[reg].value = station.vk
+                    reg_stat[reg].qi = 0
+            for s in RS:
+                if s.qj == station.name:
+                    s.vj = station.vk
+                    s.qj = 0
+                if s.qk == station.name:
+                    s.vk = station.vk
+                    s.qk = 0
+            output[station.table_id] += [cycle]
+            station.release()
 
 def update_all():
     global pop_mem_queue
-    # escrever resultado
-    write_result()
 
     # atualizar estações de reserva
     for station in RS:
         if station.busy and not station.done:
-            if station.update(mem_queue[0].name):
+            if mem_queue:
+                top_mem_queue = mem_queue[0].name
+            else:
+                top_mem_queue = None
+
+            if station.op in load_instructions:
+                flag_op = 'load'
+            elif station.op in load_instructions:
+                flag_op = 'store'
+            else:
+                flag_op = 'add'
+
+            if station.update(top_mem_queue, flag_op):
                 output[station.table_id][2].append(cycle)
             # executar a operação
             if station.has_finished():
                 execute(station)
-    
+
+    # escrever resultado
+    write_result()
+
     if pop_mem_queue:
         mem_queue.pop(0)
         pop_mem_queue = False
+
 
 def stall():
     # atualizar ciclo atual

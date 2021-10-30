@@ -1,9 +1,9 @@
-lw      f0,0(r1)
-add     f4,f0,f2
-sw      f4,0(r1)
+lw      r0,0(r1)
+add     r4,r0,r2
+sw      r4,0(r1)
 addi    r1,r1,8
-bnez    r1,loop
-lw      f0,0(r1)
-add     f4,f0,f2
-sw      f4,0(r1)
-addi    r1,r1,8      
+beq     r1,r31,loop
+lw      r0,0(r1)
+add     r4,r0,r2
+sw      r4,0(r1)
+addi    r1,r1,8

@@ -36,11 +36,12 @@ class ReservationStation():
         self.time_to_finish = self.fu_latency
         self.table_id = i
     
-    def update(self, top_mem_queue):
+    def update(self, top_mem_queue, op_flag):
         if self.busy:
             # TODO: incluir condição para operações de load/store
-            if ((self.qj == 0 and self.qk == 0) or
-                (self.qj == 0 and top_mem_queue == self.name)):
+            if ((self.qj == 0 and self.qk == 0 and op_flag == 'add') or
+                (self.qj == 0 and top_mem_queue == self.name and op_flag == 'load') or 
+                (self.qj == 0 and self.qk == 0 and top_mem_queue == self.name and op_flag == 'store')):
                 self.time_to_finish -= 1
                 return True
             """
