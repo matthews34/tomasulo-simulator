@@ -240,6 +240,7 @@ if __name__=='__main__':
 
     # inicializar estações de reserva
     init_RS(config_path)
+    init_reg_stat()
 
     # parsear instruções
     instr_list = parse_instructions(filepath)
