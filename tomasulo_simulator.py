@@ -65,12 +65,13 @@ def parse_instructions(filepath: str) -> list:
 
     instr_list = []
     
-    for line in file.readlines():
+    for i, line in enumerate(file.readlines()):
         line.lower()
         if match := instr_pattern.match(line):
             # parsear instrução
             instruction = match.group('instruction')
             arguments = match.group('arguments')
+            output[i] = [f'{instruction} {arguments}']
             arguments = arguments.split(',')
             
             # R-type instructions
@@ -144,7 +145,7 @@ def emit_instruction(i: int, instruction: Instruction):
         while not (available_stations := [r for r, station in enumerate(RS) if (station.fu_type == 'load' and not station.busy)]): # não existe estação livre
             stall()
         else: # existe estação livre
-            print('emitindo', instruction)
+            #print('emitindo', instruction)
             r = available_stations[0]
             mem_queue.append(RS[r])
             RS[r].reserve(instruction.op, i)
@@ -169,7 +170,7 @@ def emit_instruction(i: int, instruction: Instruction):
         while not (available_stations := [r for r, station in enumerate(RS) if (station.fu_type == 'add' and not station.busy)]): # não existe estação livre
             stall()           
         else: # existe uma estação livre
-            print('emitindo', instruction)
+            #print('emitindo', instruction)
             r = available_stations[0]
             RS[r].reserve(instruction.op, i)
             output[i] += [cycle, []]
@@ -302,6 +303,63 @@ def stall():
     cycle += 1
 
 
+def print_table():
+    # VERSÃO ALTERNATIVA
+    # Acho que fica menos bonito
+    '''
+    from pandas import DataFrame
+
+    for i in output:
+        output[i][2] = f'{output[i][2][0]}_{output[i][2][-1]}'
+    output_db = DataFrame.from_dict(output, orient='index')
+    output_db.columns = ['Instrucao', 'Emissao', 'Execucao (inicio_fim)', 'Escreve resultado']
+    print(output_db)
+    '''
+
+    for i in output:
+        tmp = output[i][1:]
+        output[i] = output[i][0].split(' ')
+        output[i] += tmp
+        output[i][3] = f'{output[i][3][0]}_{output[i][3][-1]}'
+
+    # determinar largura máxima de cada coluna
+    col_widths = []
+    for i in range(5):
+        max_width = 0
+        for j in output:
+            element = output[j][i]
+            if len(str(element)) > max_width:
+                max_width = len(str(element))
+        col_widths.append(max_width)
+
+    col_labels = ['Instrucao', 'Emissao', 'Execucao (inicio_fim)', 'Escrever resultado']
+    labels_width = [col_widths[0] + 1 + col_widths[1]] + col_widths[2:]
+    labels_width = [labels_width[i] if (labels_width[i] >= len(col_labels[i])) else len(col_labels[i]) for i in range(len(col_labels))]
+    col_widths[2:] = labels_width[1:]
+
+    # impressão dos nomes das colunas da tabela
+    print(f'| ', end='')
+    for i in range(len(col_labels)):
+        s_pad = labels_width[i]
+        print(f'{col_labels[i] : ^{s_pad}}', end=' | ')
+    print(f'\n{"":-<{sum(labels_width) + 13}}')
+
+    # impressão dos dados
+    for i in output:
+        print(f'| ', end='')
+        for j in range(5):
+            if j == 0:
+                s_pad = col_widths[j] + 1
+                print(f'{output[i][j] : <{s_pad}}', end='')
+            elif j == 1:
+                s_pad = col_widths[1] if labels_width[0] - (col_widths[0] + 1) < 0 else (labels_width[0] - (col_widths[0] + 1))
+                print(f'{output[i][j] : <{s_pad}}', end=' | ')
+            else:
+                s_pad = col_widths[j]
+                print(f'{output[i][j] : ^{s_pad}}', end=' | ')
+        print('')
+
+
 if __name__=='__main__':
     # parsear argumentos
     parser = argparse.ArgumentParser(description='Simular o algoritmo de Tomasulo')
@@ -323,7 +381,6 @@ if __name__=='__main__':
         cycle += 1
 
         update_all()
-        output[i] = [instruction]
         emit_instruction(i, instruction)
         
     stop = False
@@ -338,6 +395,4 @@ if __name__=='__main__':
                 break
 
     # imprimir tabela final
-    print('\n')
-    for i in output:
-        print(output[i])
+    print_table()
