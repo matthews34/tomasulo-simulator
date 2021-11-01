@@ -6,18 +6,17 @@ from registerState import RegisterState
 from instruction import Instruction
 
 # lista de instruções
-# TODO: completar instruções que faltam
-#load_instructions = ['ld', 'lw', 'lwu', 'lh', 'lhu' , 'lb', 'lbu', 'fld', 'flw']
-#store_instructions = ['sd', 'sw', 'sh', 'sb', 'fsd', 'fsw']
 load_instructions = ['lb', 'lh', 'lw', 'lbu', 'lhu']
 store_instructions = ['sb', 'sh', 'sw']
-add_instructions = ['add', 'sub', 'subi', 'addi']
-mult_instructions = ['mul']
+add_instructions = ['add', 'sub', 'addi']
 branch_instructions = ['beq', 'bne', 'blt', 'bge', 'bltu', 'bgeu']
+csr_instructions = ['csrrw', 'csrrs', 'csrrc', 'csrrwi', 'csrrsi']
+special_instructions = ['fence', 'fence.i', 'ebreak', 'ecall']
 
 # tipos de instruções (R, I, S, B, U, J)
 R_type = ['add', 'sub', 'sll', 'slt', 'sltu', 'xor', 'srl', 'sra', 'or', 'and']
-I_type = ['jalr', 'lb', 'lh', 'lw', 'lbu', 'lhu', 'addi', 'slti', 'sltiu', 'xori', 'ori', 'andi', 'slli', 'srli', 'srai']
+I_type = ['jalr', 'lb', 'lh', 'lw', 'lbu', 'lhu', 'addi', 'slti', 'sltiu', 'xori', 'ori', 'andi', 'slli', 'srli', 'srai',
+            'csrrw', 'csrrs', 'csrrc']
 S_type = ['sb', 'sh', 'sw']
 B_type = ['beq', 'bne', 'blt', 'bge', 'bltu', 'bgeu']
 U_type = ['lui', 'auipc']
@@ -55,10 +54,14 @@ def init_reg_stat():
     for name in reg_stat_names:
         reg_stat[name] = RegisterState()
 
+    # Registradores de proposito especifico
+    reg_stat['env'] = RegisterState()
+
 def parse_instructions(filepath: str) -> list:
     # padrões para parsear as instruções
     instr_pattern = re.compile('^(?P<instruction>\S+)\s+(?P<arguments>\S+)')
     imm_pattern = re.compile('(?P<imm>-?\d+)\((?P<rs>\S+)\)')
+    special_pattern = re.compile('^(?P<instruction>\S+)')
     
     # abrir arquivo ASM
     file = open(filepath, 'r')
@@ -92,9 +95,13 @@ def parse_instructions(filepath: str) -> list:
                 if match := imm_pattern.match(arguments[1]):
                     imm = match.group('imm')
                     rs = match.group('rs')
-                else:
+                elif instruction not in csr_instructions:
                     rs = arguments[1]
                     imm = arguments[2]
+                # instruções do tipo CSR do tipo I
+                else:
+                    rs = arguments[2]
+                    imm = arguments[1]
                 
                 if instruction in load_instructions:
                     fu_type = 'load'
@@ -130,9 +137,44 @@ def parse_instructions(filepath: str) -> list:
                     'imm': imm
                 }))
 
-            # TODO: tratar as instruções de chamada de sistema e as do tipo CSR
+            # Intruções CSR com Unsigned Immediate
+            elif instruction in csr_instructions and instruction not in I_type:
+                rt = arguments[0]
+                imm = arguments[1]
+                uimm = arguments[2]
+                instr_list.append(Instruction(instruction, 'add', {
+                    'rt': rt,
+                    'imm': imm,
+                    'uimm': uimm
+                }))
+
+            # Instruções especiais de chamada de sistema (ECALL, EBREAK, FENCE, FENCE.I)
+            # são tratadas como branches para um espaço de memória reservado para o SO
+            elif instruction in special_instructions:
+                instr_list.append(Instruction(instruction, 'add', {
+                    'rt': 'env',
+                    'imm': '0',
+                    'rs': 'env'
+                }))
+            
             else:
-                pass
+                raise ValueError('Instrução inválida')
+
+        
+        elif match := special_pattern.match(line):
+            # parsear instrução
+            instruction = match.group('instruction')
+            output[i] = [f'{instruction} ']
+            # Instruções especiais de chamada de sistema (ECALL, EBREAK, FENCE, FENCE.I)
+            # são tratadas como branches para um espaço de memória reservado para o SO
+            if instruction in special_instructions:
+                instr_list.append(Instruction(instruction, 'add', {
+                    'rt': 'env',
+                    'imm': '0',
+                    'rs': 'env'
+                }))
+            else:
+                raise ValueError('Instrução inválida')       
                            
     return instr_list
 
@@ -145,7 +187,6 @@ def emit_instruction(i: int, instruction: Instruction):
         while not (available_stations := [r for r, station in enumerate(RS) if (station.fu_type == 'load' and not station.busy)]): # não existe estação livre
             stall()
         else: # existe estação livre
-            #print('emitindo', instruction)
             r = available_stations[0]
             mem_queue.append(RS[r])
             RS[r].reserve(instruction.op, i)
@@ -170,7 +211,6 @@ def emit_instruction(i: int, instruction: Instruction):
         while not (available_stations := [r for r, station in enumerate(RS) if (station.fu_type == 'add' and not station.busy)]): # não existe estação livre
             stall()           
         else: # existe uma estação livre
-            #print('emitindo', instruction)
             r = available_stations[0]
             RS[r].reserve(instruction.op, i)
             output[i] += [cycle, []]
@@ -209,7 +249,7 @@ def emit_instruction(i: int, instruction: Instruction):
                     reg_stat[rt].qi = RS[r].name
                 
                 # B-type instructions
-                elif instruction.op in B_type:
+                elif instruction.op in B_type or instruction.op in special_instructions:
                     rs = instruction.operands['rs']
                     if reg_stat[rs].qi != 0:
                         RS[r].qj = reg_stat[rs].qi
@@ -222,23 +262,30 @@ def emit_instruction(i: int, instruction: Instruction):
                         RS[r].vk = reg_stat[rt].value
                         RS[r].qk = 0
                     RS[r].address = imm
-                    
+
+                # CSR instructions with Unsigned Immediate
+                elif instruction in csr_instructions and instruction not in I_type:
+                    uimm = instruction.operands['uimm']
+                    RS[r].vk = imm
+                    RS[r].vj = uimm
+                    RS[r].qj = 0
+                    RS[r].qk = 0   
+                    reg_stat[rt].qi = RS[r].name
+
                 # U/J-type instructions
                 else:
                     RS[r].vj = imm
                     RS[r].qj = 0
-                    RS[r].qk = 0   # TODO: outro approach?
+                    RS[r].qk = 0   
                     reg_stat[rt].qi = RS[r].name
 
 def execute(station: ReservationStation):
-    # TODO: Um if personalizado para cada instrução?
     station.done = True
     global pop_mem_queue
     if mem_queue and mem_queue[0].name == station.name:
         pop_mem_queue = True
 
-    if station.op in S_type or station.op in B_type:
-        # TODO: Fazer mais o que?
+    if station.op in S_type or station.op in B_type or station.op in special_instructions:
         output[station.table_id] += ['-']
         station.release()
     else:
@@ -305,7 +352,6 @@ def stall():
 
 def print_table():
     # VERSÃO ALTERNATIVA
-    # Acho que fica menos bonito
     '''
     from pandas import DataFrame
 
