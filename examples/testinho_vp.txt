@@ -1,0 +1,6 @@
+|  Instrucao   | Emissao | Execucao (inicio_fim) | Escrever resultado | 
+-----------------------------------------------------------------------
+| slt r0,r1,r2 |    1    |          2_2          |         3          | 
+| sub r0,r1,r2 |    2    |          3_3          |         4          | 
+| add r2,r1,r2 |    3    |          4_4          |         5          | 
+| sub r3,r0,r1 |    4    |          5_5          |         6          | 
