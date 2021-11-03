@@ -26,3 +26,8 @@ Na pasta *examples* constam alguns exemplos de arquivo em assembly (arquivos *.a
 ```
 
 ## Contribuições
+* **Matheus**: base do simulador, parsing de instruções, issue, casos de teste
+* **Pedro**: parsing das instruções, issue, execução de instruções especiais, casos de teste
+* **Carolina**: implementação da execução e escrita de resultados do algoritmos, apresentação dos resultados para o usuário, casos de teste
+* **Marcel**: testes
+* **Lucas**: testes
